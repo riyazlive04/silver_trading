@@ -1,0 +1,177 @@
+// Sirah Digital — Commodity Trading Investment & Repayment Platform
+// Data model. SQLite for now; switch `provider` to "postgresql" + DATABASE_URL to scale up.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum RateBasis {
+  MONTHLY
+  ANNUAL
+}
+
+enum PayoutType {
+  INTEREST_ONLY
+  AMORTIZING
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STAFF)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clientsCreated      Client[]          @relation("ClientCreatedBy")
+  investmentsCreated  Investment[]      @relation("InvestmentCreatedBy")
+  auditLogs           AuditLog[]
+  interestSettingsSet InterestSettings[] @relation("InterestSettingsUpdatedBy")
+  featureFlagsSet     FeatureFlags[]     @relation("FeatureFlagsUpdatedBy")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  panNumber String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdById String
+  createdBy   User   @relation("ClientCreatedBy", fields: [createdById], references: [id])
+
+  investments Investment[]
+
+  @@index([name])
+}
+
+// Admin-configured tenure -> rate slabs. tenureYears = null means
+// "flat rate applied to any tenure beyond the highest defined slab".
+model RatePlan {
+  id          String   @id @default(cuid())
+  tenureYears Int?
+  label       String
+  ratePercent Float
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Singleton row (enforced in application code, not schema) holding the
+// global rate basis / payout structure / minimum investment rules.
+model InterestSettings {
+  id                String     @id @default(cuid())
+  rateBasis         RateBasis  @default(MONTHLY)
+  payoutType        PayoutType @default(INTEREST_ONLY)
+  minimumInvestment Float      @default(300000)
+  updatedAt         DateTime   @updatedAt
+
+  updatedById String?
+  updatedBy   User?   @relation("InterestSettingsUpdatedBy", fields: [updatedById], references: [id])
+}
+
+// Singleton row, super-admin-only control.
+model FeatureFlags {
+  id                   String   @id @default(cuid())
+  aiSuiteEnabled       Boolean  @default(true)
+  payoutTrackingEnabled Boolean @default(true)
+  updatedAt            DateTime @updatedAt
+
+  updatedById String?
+  updatedBy   User?   @relation("FeatureFlagsUpdatedBy", fields: [updatedById], references: [id])
+}
+
+model Investment {
+  id          String            @id @default(cuid())
+  clientId    String
+  client      Client            @relation(fields: [clientId], references: [id])
+
+  principalAmount    Float
+  tenureYears        Float
+  tenureMonths        Int
+  startDate          DateTime
+  maturityDate       DateTime
+
+  // Snapshotted at creation so later admin changes never alter history.
+  ratePercentApplied Float
+  rateBasisApplied   RateBasis
+  payoutTypeApplied  PayoutType
+
+  status    InvestmentStatus @default(ACTIVE)
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  createdById String
+  createdBy   User   @relation("InvestmentCreatedBy", fields: [createdById], references: [id])
+
+  schedule RepaymentEntry[]
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model RepaymentEntry {
+  id             String            @id @default(cuid())
+  investmentId   String
+  investment     Investment        @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  installmentNo   Int
+  dueDate         DateTime
+  openingBalance  Float
+  interestAmount  Float
+  principalAmount Float
+  totalPayout     Float
+  closingBalance  Float
+
+  status    InstallmentStatus @default(PENDING)
+  paidDate  DateTime?
+  paidAmount Float?
+
+  @@index([investmentId])
+  @@index([dueDate])
+  @@unique([investmentId, installmentNo])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  beforeJson String?
+  afterJson  String?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
