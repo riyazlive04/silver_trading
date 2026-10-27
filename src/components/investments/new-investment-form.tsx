@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ClientCombobox, type ClientOption } from "@/components/investments/client-combobox";
+import { SchedulePreviewDialog } from "@/components/investments/schedule-preview-dialog";
 import { createInvestment } from "@/lib/actions/investments";
 import { computeSchedule, resolveRate, type PayoutType, type RateBasis } from "@/lib/calculator";
 import { formatINR } from "@/lib/format";
@@ -118,148 +119,165 @@ export function NewInvestmentForm({
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Investment details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label>Client</Label>
-              <Controller
-                control={control}
-                name="clientId"
-                render={({ field }) => (
-                  <ClientCombobox clients={clients} value={field.value} onChange={field.onChange} />
-                )}
-              />
-            </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">New Investment</h1>
+          <p className="text-sm text-muted-foreground">
+            Enter the amount and tenure — the repayment schedule is calculated automatically.
+          </p>
+        </div>
+        <SchedulePreviewDialog
+          schedule={preview}
+          exportInput={{ clientId, principalAmount: principal, tenureYears, startDate }}
+          clientName={clients.find((c) => c.id === clientId)?.name}
+          disabled={belowMinimum}
+        />
+      </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="principalAmount">Principal amount (₹)</Label>
-              <Input
-                id="principalAmount"
-                type="number"
-                step="1000"
-                placeholder={settings.minimumInvestment.toString()}
-                {...register("principalAmount")}
-              />
-              {belowMinimum && (
-                <p className="text-sm text-destructive">
-                  Minimum investment is {formatINR(settings.minimumInvestment)}.
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>Tenure</Label>
-              <Controller
-                control={control}
-                name="tenureSelection"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {definedPlans.map((plan) => (
-                        <SelectItem key={plan.tenureYears} value={String(plan.tenureYears)}>
-                          {plan.label} — {plan.ratePercent}% {settings.rateBasis === "MONTHLY" ? "/mo" : "/yr"}
-                        </SelectItem>
-                      ))}
-                      {flatPlan && (
-                        <SelectItem value="custom">
-                          More than {maxDefinedTenure} years (flat {flatPlan.ratePercent}%)
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              {tenureSelection === "custom" && (
-                <Input
-                  type="number"
-                  min={maxDefinedTenure + 1}
-                  placeholder={`e.g. ${maxDefinedTenure + 2}`}
-                  {...register("customTenureYears")}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Investment details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label>Client</Label>
+                <Controller
+                  control={control}
+                  name="clientId"
+                  render={({ field }) => (
+                    <ClientCombobox clients={clients} value={field.value} onChange={field.onChange} />
+                  )}
                 />
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="startDate">Start date</Label>
-              <Input id="startDate" type="date" {...register("startDate")} />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="notes">Notes (optional)</Label>
-              <Textarea id="notes" rows={2} {...register("notes")} />
-            </div>
-
-            <Button type="submit" disabled={submitting || belowMinimum || !preview} className="mt-1">
-              {submitting ? "Creating..." : "Create investment"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Repayment preview</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!preview ? (
-            <Alert>
-              <AlertCircle className="size-4" />
-              <AlertDescription>Fill in the amount and tenure to see the projected schedule.</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <SummaryRow label="Rate applied" value={`${preview.ratePercent}% ${settings.rateBasis === "MONTHLY" ? "per month" : "per annum"}`} />
-                <SummaryRow label="Payout structure" value={settings.payoutType === "INTEREST_ONLY" ? "Interest-only" : "Amortizing (EMI)"} />
-                <SummaryRow label="Monthly payout (1st)" value={formatINR(preview.entries[0].totalPayout)} />
-                <SummaryRow label="Total interest" value={formatINR(preview.totalInterest)} />
-                <SummaryRow label="Total payout" value={formatINR(preview.totalPayout)} />
-                <SummaryRow label="Installments" value={String(preview.entries.length)} />
               </div>
 
-              <div className="rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      <th className="px-3 py-2 text-left">Due</th>
-                      <th className="px-3 py-2 text-right">Interest</th>
-                      <th className="px-3 py-2 text-right">Principal</th>
-                      <th className="px-3 py-2 text-right">Payout</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {preview.entries.slice(0, 3).map((e) => (
-                      <PreviewRow key={e.installmentNo} entry={e} />
-                    ))}
-                    {preview.entries.length > 4 && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="principalAmount">Principal amount (₹)</Label>
+                <Input
+                  id="principalAmount"
+                  type="number"
+                  step="1000"
+                  placeholder={settings.minimumInvestment.toString()}
+                  {...register("principalAmount")}
+                />
+                {belowMinimum && (
+                  <p className="text-sm text-destructive">
+                    Minimum investment is {formatINR(settings.minimumInvestment)}.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label>Tenure</Label>
+                <Controller
+                  control={control}
+                  name="tenureSelection"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {definedPlans.map((plan) => (
+                          <SelectItem key={plan.tenureYears} value={String(plan.tenureYears)}>
+                            {plan.label} — {plan.ratePercent}% {settings.rateBasis === "MONTHLY" ? "/mo" : "/yr"}
+                          </SelectItem>
+                        ))}
+                        {flatPlan && (
+                          <SelectItem value="custom">
+                            More than {maxDefinedTenure} years (flat {flatPlan.ratePercent}%)
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {tenureSelection === "custom" && (
+                  <Input
+                    type="number"
+                    min={maxDefinedTenure + 1}
+                    placeholder={`e.g. ${maxDefinedTenure + 2}`}
+                    {...register("customTenureYears")}
+                  />
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="startDate">Start date</Label>
+                <Input id="startDate" type="date" {...register("startDate")} />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="notes">Notes (optional)</Label>
+                <Textarea id="notes" rows={2} {...register("notes")} />
+              </div>
+
+              <Button type="submit" disabled={submitting || belowMinimum || !preview} className="mt-1">
+                {submitting ? "Creating..." : "Create investment"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Repayment preview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!preview ? (
+              <Alert>
+                <AlertCircle className="size-4" />
+                <AlertDescription>Fill in the amount and tenure to see the projected schedule.</AlertDescription>
+              </Alert>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <SummaryRow label="Rate applied" value={`${preview.ratePercent}% ${settings.rateBasis === "MONTHLY" ? "per month" : "per annum"}`} />
+                  <SummaryRow label="Payout structure" value={settings.payoutType === "INTEREST_ONLY" ? "Interest-only" : "Amortizing (EMI)"} />
+                  <SummaryRow label="Monthly payout (1st)" value={formatINR(preview.entries[0].totalPayout)} />
+                  <SummaryRow label="Total interest" value={formatINR(preview.totalInterest)} />
+                  <SummaryRow label="Total payout" value={formatINR(preview.totalPayout)} />
+                  <SummaryRow label="Installments" value={String(preview.entries.length)} />
+                </div>
+
+                <div className="rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/50 text-xs text-muted-foreground">
                       <tr>
-                        <td colSpan={5} className="px-3 py-1.5 text-center text-xs text-muted-foreground">
-                          ⋯ {preview.entries.length - 4} more installments ⋯
-                        </td>
+                        <th className="px-3 py-2 text-left">#</th>
+                        <th className="px-3 py-2 text-left">Due</th>
+                        <th className="px-3 py-2 text-right">Interest</th>
+                        <th className="px-3 py-2 text-right">Principal</th>
+                        <th className="px-3 py-2 text-right">Payout</th>
                       </tr>
-                    )}
-                    {preview.entries.length > 3 && (
-                      <PreviewRow entry={preview.entries[preview.entries.length - 1]} />
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y">
+                      {preview.entries.slice(0, 3).map((e) => (
+                        <PreviewRow key={e.installmentNo} entry={e} />
+                      ))}
+                      {preview.entries.length > 4 && (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-1.5 text-center text-xs text-muted-foreground">
+                            ⋯ {preview.entries.length - 4} more installments ⋯
+                          </td>
+                        </tr>
+                      )}
+                      {preview.entries.length > 3 && (
+                        <PreviewRow entry={preview.entries[preview.entries.length - 1]} />
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use &ldquo;View full schedule&rdquo; above to see every installment and export it as PDF/Excel.
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                The full schedule is saved and exportable as PDF/Excel once the investment is created.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
