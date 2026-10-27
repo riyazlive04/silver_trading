@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -6,7 +7,13 @@ import { UserDialog } from "@/components/settings/user-dialog";
 import { formatDate } from "@/lib/format";
 
 export default async function UsersPage() {
-  const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+  const session = await auth();
+  const isSuperAdmin = session?.user.role === "SUPER_ADMIN";
+
+  const users = await prisma.user.findMany({
+    where: isSuperAdmin ? undefined : { role: { not: "SUPER_ADMIN" } },
+    orderBy: { createdAt: "asc" },
+  });
 
   return (
     <div className="flex flex-col gap-6">

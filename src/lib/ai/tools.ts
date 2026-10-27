@@ -1,4 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type { OpenAI } from "openai";
 import { prisma } from "@/lib/prisma";
 import { formatINR, formatDate } from "@/lib/format";
 
@@ -108,46 +108,61 @@ async function getOverduePayouts() {
   };
 }
 
-export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
+export const ASSISTANT_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
-    name: "get_aum_summary",
-    description: "Get total assets under management and counts of active/closed/cancelled investments.",
-    input_schema: { type: "object", properties: {} },
-  },
-  {
-    name: "get_upcoming_payouts",
-    description: "List payouts due in the next N days across all active investments.",
-    input_schema: {
-      type: "object",
-      properties: { days: { type: "number", description: "How many days ahead to look." } },
-      required: ["days"],
+    type: "function",
+    function: {
+      name: "get_aum_summary",
+      description: "Get total assets under management and counts of active/closed/cancelled investments.",
+      parameters: { type: "object", properties: {} },
     },
   },
   {
-    name: "get_investments_maturing_between",
-    description: "List active investments maturing within a date range.",
-    input_schema: {
-      type: "object",
-      properties: {
-        startDate: { type: "string", description: "ISO date, inclusive." },
-        endDate: { type: "string", description: "ISO date, inclusive." },
+    type: "function",
+    function: {
+      name: "get_upcoming_payouts",
+      description: "List payouts due in the next N days across all active investments.",
+      parameters: {
+        type: "object",
+        properties: { days: { type: "number", description: "How many days ahead to look." } },
+        required: ["days"],
       },
-      required: ["startDate", "endDate"],
     },
   },
   {
-    name: "get_client_portfolio",
-    description: "Look up a client by (partial) name and list all of their investments.",
-    input_schema: {
-      type: "object",
-      properties: { clientName: { type: "string" } },
-      required: ["clientName"],
+    type: "function",
+    function: {
+      name: "get_investments_maturing_between",
+      description: "List active investments maturing within a date range.",
+      parameters: {
+        type: "object",
+        properties: {
+          startDate: { type: "string", description: "ISO date, inclusive." },
+          endDate: { type: "string", description: "ISO date, inclusive." },
+        },
+        required: ["startDate", "endDate"],
+      },
     },
   },
   {
-    name: "get_overdue_payouts",
-    description: "List payouts that are past their due date and still marked pending.",
-    input_schema: { type: "object", properties: {} },
+    type: "function",
+    function: {
+      name: "get_client_portfolio",
+      description: "Look up a client by (partial) name and list all of their investments.",
+      parameters: {
+        type: "object",
+        properties: { clientName: { type: "string" } },
+        required: ["clientName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_overdue_payouts",
+      description: "List payouts that are past their due date and still marked pending.",
+      parameters: { type: "object", properties: {} },
+    },
   },
 ];
 

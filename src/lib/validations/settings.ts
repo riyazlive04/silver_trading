@@ -24,3 +24,10 @@ export const featureFlagsSchema = z.object({
   payoutTrackingEnabled: z.boolean(),
 });
 export type FeatureFlagsInput = z.infer<typeof featureFlagsSchema>;
+
+export const openaiApiKeySchema = z.object({
+  // Plaintext from the form; omitted/empty means "leave the stored key unchanged".
+  openaiApiKey: z.string().trim().optional(),
+  clearOpenaiApiKey: z.boolean().optional(),
+});
+export type OpenAIApiKeyInput = z.infer<typeof openaiApiKeySchema>;

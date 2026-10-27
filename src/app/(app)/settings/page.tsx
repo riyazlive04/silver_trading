@@ -1,13 +1,16 @@
 import { prisma } from "@/lib/prisma";
-import { getInterestSettings } from "@/lib/settings";
+import { getFeatureFlags, getInterestSettings, getOpenAIApiKeyMasked } from "@/lib/settings";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { InterestSettingsForm } from "@/components/settings/interest-settings-form";
 import { RatePlansEditor } from "@/components/settings/rate-plans-editor";
+import { ApiKeyForm } from "@/components/settings/api-key-form";
 
 export default async function SettingsPage() {
-  const [settings, ratePlans] = await Promise.all([
+  const [settings, ratePlans, flags, maskedApiKey] = await Promise.all([
     getInterestSettings(),
     prisma.ratePlan.findMany({ orderBy: { sortOrder: "asc" } }),
+    getFeatureFlags(),
+    getOpenAIApiKeyMasked(),
   ]);
 
   return (
@@ -54,6 +57,10 @@ export default async function SettingsPage() {
             />
           </CardContent>
         </Card>
+
+        <div className="lg:col-span-2">
+          <ApiKeyForm maskedApiKey={maskedApiKey} hasStoredApiKey={!!flags.openaiApiKeyEncrypted} />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { getFeatureFlags } from "@/lib/settings";
+import OpenAI from "openai";
+import { getFeatureFlags, getOpenAIApiKey } from "@/lib/settings";
 import { formatDate } from "@/lib/format";
+
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 
 interface CoverNoteInput {
   clientName: string;
@@ -35,17 +37,17 @@ function templatedCoverNote(input: CoverNoteInput): string {
 
 export async function generateCoverNote(input: CoverNoteInput): Promise<{ text: string; aiGenerated: boolean }> {
   const flags = await getFeatureFlags();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getOpenAIApiKey();
 
   if (!flags.aiSuiteEnabled || !apiKey) {
     return { text: templatedCoverNote(input), aiGenerated: false };
   }
 
   try {
-    const client = new Anthropic({ apiKey });
-    const message = await client.messages.create({
-      model: "claude-sonnet-5-5",
-      max_tokens: 220,
+    const client = new OpenAI({ apiKey });
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      max_completion_tokens: 220,
       messages: [
         {
           role: "user",
@@ -72,11 +74,7 @@ export async function generateCoverNote(input: CoverNoteInput): Promise<{ text: 
       ],
     });
 
-    const text = message.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join(" ")
-      .trim();
+    const text = response.choices[0]?.message?.content?.trim();
 
     if (!text) return { text: templatedCoverNote(input), aiGenerated: false };
     return { text, aiGenerated: true };

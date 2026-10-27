@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sirah-trading-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: sirah_trading
+    ports:
+      - "5434:5432"
+    volumes:
+      - sirah-trading-db-data:/var/lib/postgresql/data
+
+volumes:
+  sirah-trading-db-data:

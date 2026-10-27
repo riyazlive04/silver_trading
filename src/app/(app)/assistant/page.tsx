@@ -1,11 +1,14 @@
 import { ShieldAlert } from "lucide-react";
-import { getFeatureFlags } from "@/lib/settings";
+import Link from "next/link";
+import { auth } from "@/auth";
+import { getFeatureFlags, getOpenAIApiKey } from "@/lib/settings";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AssistantChat } from "@/components/assistant/assistant-chat";
 
 export default async function AssistantPage() {
-  const flags = await getFeatureFlags();
-  const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+  const [session, flags, apiKey] = await Promise.all([auth(), getFeatureFlags(), getOpenAIApiKey()]);
+  const hasApiKey = !!apiKey;
+  const isSuperAdmin = session?.user.role === "SUPER_ADMIN";
 
   return (
     <div className="flex flex-col gap-6">
@@ -26,9 +29,19 @@ export default async function AssistantPage() {
       ) : !hasApiKey ? (
         <Alert variant="destructive">
           <ShieldAlert className="size-4" />
-          <AlertTitle>Anthropic API key not configured</AlertTitle>
+          <AlertTitle>OpenAI API key not configured</AlertTitle>
           <AlertDescription>
-            Add <code>ANTHROPIC_API_KEY</code> to the server environment to enable the assistant.
+            {isSuperAdmin ? (
+              <>
+                Add one under{" "}
+                <Link href="/settings/platform" className="underline">
+                  Settings → Platform
+                </Link>
+                .
+              </>
+            ) : (
+              "Ask a super admin to add one under Settings → Platform."
+            )}
           </AlertDescription>
         </Alert>
       ) : (

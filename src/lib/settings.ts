@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { FeatureFlags, InterestSettings, RatePlan } from "@prisma/client";
-import { logAudit } from "@/lib/audit";
+import { decryptSecret, maskSecret } from "@/lib/crypto";
 
 /** These singletons are ensured to exist by the seed script; these getters are a defensive fallback. */
 export async function getInterestSettings(): Promise<InterestSettings> {
@@ -19,42 +19,26 @@ export async function getActiveRatePlans(): Promise<RatePlan[]> {
   return prisma.ratePlan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
 }
 
-export async function updateInterestSettings(
-  userId: string,
-  data: Partial<Pick<InterestSettings, "rateBasis" | "payoutType" | "minimumInvestment">>
-) {
-  const before = await getInterestSettings();
-  const after = await prisma.interestSettings.update({
-    where: { id: before.id },
-    data: { ...data, updatedById: userId },
-  });
-  await logAudit({
-    userId,
-    action: "UPDATE_INTEREST_SETTINGS",
-    entityType: "InterestSettings",
-    entityId: before.id,
-    before,
-    after,
-  });
-  return after;
+/**
+ * Resolves the OpenAI API key to use for AI features: an admin-configured key
+ * (encrypted in the DB) takes precedence, falling back to OPENAI_API_KEY in the
+ * server environment. Never expose the return value to the client.
+ */
+export async function getOpenAIApiKey(): Promise<string | null> {
+  const flags = await getFeatureFlags();
+  if (flags.openaiApiKeyEncrypted) {
+    try {
+      return decryptSecret(flags.openaiApiKeyEncrypted);
+    } catch {
+      // Falls through to the env var if the stored value can't be decrypted
+      // (e.g. AUTH_SECRET rotated) rather than hard-failing the request.
+    }
+  }
+  return process.env.OPENAI_API_KEY || null;
 }
 
-export async function updateFeatureFlags(
-  userId: string,
-  data: Partial<Pick<FeatureFlags, "aiSuiteEnabled" | "payoutTrackingEnabled">>
-) {
-  const before = await getFeatureFlags();
-  const after = await prisma.featureFlags.update({
-    where: { id: before.id },
-    data: { ...data, updatedById: userId },
-  });
-  await logAudit({
-    userId,
-    action: "UPDATE_FEATURE_FLAGS",
-    entityType: "FeatureFlags",
-    entityId: before.id,
-    before,
-    after,
-  });
-  return after;
+/** Masked preview for the settings UI — e.g. "••••••••ab12", or null if nothing is configured. */
+export async function getOpenAIApiKeyMasked(): Promise<string | null> {
+  const key = await getOpenAIApiKey();
+  return key ? maskSecret(key) : null;
 }

@@ -1,12 +1,13 @@
 // Sirah Digital — Commodity Trading Investment & Repayment Platform
-// Data model. SQLite for now; switch `provider` to "postgresql" + DATABASE_URL to scale up.
+// Data model. Postgres-backed (required for Vercel — its serverless filesystem can't hold a SQLite file).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -101,10 +102,12 @@ model InterestSettings {
 
 // Singleton row, super-admin-only control.
 model FeatureFlags {
-  id                   String   @id @default(cuid())
-  aiSuiteEnabled       Boolean  @default(true)
-  payoutTrackingEnabled Boolean @default(true)
-  updatedAt            DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  aiSuiteEnabled        Boolean  @default(true)
+  payoutTrackingEnabled Boolean  @default(true)
+  // AES-256-GCM encrypted (see src/lib/crypto.ts) — never store or log this in plaintext.
+  openaiApiKeyEncrypted String?
+  updatedAt             DateTime @updatedAt
 
   updatedById String?
   updatedBy   User?   @relation("FeatureFlagsUpdatedBy", fields: [updatedById], references: [id])

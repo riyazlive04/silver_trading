@@ -46,7 +46,8 @@ export function FeatureFlagsForm({
               <p className="font-medium">Full AI Suite</p>
               <p className="text-sm text-muted-foreground">
                 AI-generated cover notes on exported PDFs, and the natural-language portfolio assistant. The
-                rule-based reminders on the dashboard always stay on regardless of this toggle.
+                rule-based reminders on the dashboard always stay on regardless of this toggle. The OpenAI API
+                key itself is managed by admins under Settings → Rates & Rules.
               </p>
             </div>
           </div>

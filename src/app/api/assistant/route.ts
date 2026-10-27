@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { requireSession } from "@/lib/auth-guard";
-import { getFeatureFlags } from "@/lib/settings";
+import { getFeatureFlags, getOpenAIApiKey } from "@/lib/settings";
 import { ASSISTANT_TOOLS, runAssistantTool } from "@/lib/ai/tools";
 
 const SYSTEM_PROMPT = `You are the portfolio assistant for Sirah Digital's commodity (silver) trading desk, used \
@@ -10,65 +11,75 @@ guess numbers, always call a tool to get real data. Be concise and use Indian Ru
 tools. You can only read data; you cannot create, edit, or delete anything. If asked to do something outside \
 answering portfolio questions, politely decline.`;
 
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 const MAX_TOOL_ROUNDS = 4;
 
 export async function POST(req: NextRequest) {
   await requireSession();
 
   const flags = await getFeatureFlags();
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getOpenAIApiKey();
   if (!flags.aiSuiteEnabled) {
     return NextResponse.json({ error: "The AI suite is currently disabled by a super admin." }, { status: 403 });
   }
   if (!apiKey) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured on the server." }, { status: 503 });
+    return NextResponse.json(
+      { error: "No OpenAI API key configured. Add one under Settings → Platform." },
+      { status: 503 }
+    );
   }
 
   const body = await req.json();
-  const userMessages: Anthropic.MessageParam[] = Array.isArray(body?.messages) ? body.messages : [];
+  const userMessages: ChatCompletionMessageParam[] = Array.isArray(body?.messages) ? body.messages : [];
   if (userMessages.length === 0) {
     return NextResponse.json({ error: "No messages provided." }, { status: 400 });
   }
 
-  const client = new Anthropic({ apiKey });
-  const messages: Anthropic.MessageParam[] = [...userMessages];
+  const client = new OpenAI({ apiKey });
+  const messages: ChatCompletionMessageParam[] = [{ role: "system", content: SYSTEM_PROMPT }, ...userMessages];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const response = await client.messages.create({
-      model: "claude-sonnet-5-5",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      max_completion_tokens: 1024,
       tools: ASSISTANT_TOOLS,
       messages,
     });
 
-    const toolUseBlocks = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
-    );
+    const message = response.choices[0]?.message;
+    const toolCalls = message?.tool_calls ?? [];
 
-    if (toolUseBlocks.length === 0 || response.stop_reason !== "tool_use") {
-      const text = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === "text")
-        .map((b) => b.text)
-        .join("\n");
-      return NextResponse.json({ reply: text });
+    if (toolCalls.length === 0 || response.choices[0]?.finish_reason !== "tool_calls") {
+      return NextResponse.json({ reply: message?.content ?? "" });
     }
 
-    messages.push({ role: "assistant", content: response.content });
+    messages.push(message);
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
-      toolUseBlocks.map(async (block) => ({
-        type: "tool_result" as const,
-        tool_use_id: block.id,
-        content: JSON.stringify(await runAssistantTool(block.name, block.input)),
-      }))
+    const toolResults = await Promise.all(
+      toolCalls.map(async (call) => {
+        const args = call.type === "function" ? safeParseJson(call.function.arguments) : {};
+        const result = call.type === "function" ? await runAssistantTool(call.function.name, args) : { error: "Unsupported tool call type." };
+        return {
+          role: "tool" as const,
+          tool_call_id: call.id,
+          content: JSON.stringify(result),
+        };
+      })
     );
 
-    messages.push({ role: "user", content: toolResults });
+    messages.push(...toolResults);
   }
 
   return NextResponse.json(
     { error: "The assistant took too many steps to answer. Try a more specific question." },
     { status: 500 }
   );
+}
+
+function safeParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
